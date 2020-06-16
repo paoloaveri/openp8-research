@@ -1,7 +1,3 @@
-# Script to update P8 watch (running stock firmware MOY-TFK5-1.7.7) over BLE using the Bleak API
-# Uses modified version of Bleak https://github.com/paoloaveri/bleak, only tested on Mac
-# Author: Paolo Averi
-
 import asyncio
 from bleak import *
 import logging
@@ -21,7 +17,6 @@ gb_fee3_complete_len = 0
 gb_fee3_complete_cmd = bytearray()
 gb_fee3_received_len = 0
 gb_fee3_notify_counter = 0
-gb_state_update_started = False
 gb_state_watch_in_DFU_MODE = False
 gb_state_update_finished = False
 gb_received_update_crc16 = 0
@@ -82,7 +77,7 @@ def crc16_ccitt(crc: int, data: bytearray):
 def p8_crc16(data: bytearray):
     return crc16_ccitt(0xFEEA, data)
 
-async def sendCommand(cmd: int, data: bytearray):
+async def send_command(cmd: int, data: bytearray):
     global gb_arg_debug
     global gb_bleak_client
     data2send = bytearray()
@@ -143,7 +138,6 @@ def notification_handler_fee3(sender, data: bytes):
     global gb_fee3_complete_len
     global gb_fee3_complete_cmd
     global gb_fee3_received_len
-    global gb_state_update_started
     global gb_state_watch_in_DFU_MODE
     global gb_received_update_crc16
     global gb_update_file_crc16
@@ -177,8 +171,6 @@ def notification_handler_fee3(sender, data: bytes):
     if gb_arg_debug:
         print("received full command: ")
         print(''.join('0x{:02x},'.format(x) for x in gb_fee3_complete_cmd))
-    if not(gb_state_update_started):
-        print("Update not started")
     
     if (ba == bytearray([0xFE, 0xEA, 0x10, 0x07, 0x63, 0x0, 0x0])) and not(gb_state_watch_in_DFU_MODE):
         # update haven't stated yet (block number is 0)
@@ -208,20 +200,6 @@ def notification_handler_fee3(sender, data: bytes):
     else:
         gb_state_watch_in_DFU_MODE = True
         print("continuing aborted update...")
-        # print("Error during the update process.")
-        # print("Received BLE packet on 0xfee3:")
-        # print(''.join('0x{:02x},'.format(x) for x in gb_fee3_complete_cmd))
-        # print("This is the current state:")
-        # print(f"gb_bleak_client={gb_bleak_client}")
-        # print(f"gb_fee3_complete_len={gb_fee3_complete_len}")
-        # print(f"gb_fee3_complete_cmd={gb_fee3_complete_cmd}")
-        # print(f"gb_fee3_received_len={gb_fee3_received_len}")
-        # print(f"gb_state_update_started={gb_state_update_started}")
-        # print(f"gb_state_watch_in_DFU_MODE={gb_state_watch_in_DFU_MODE}")
-        # print(f"gb_received_update_crc16={gb_received_update_crc16}")
-        # print(f"gb_update_file_crc16={gb_update_file_crc16}")
-        # print(f"gb_current_block_nb={gb_current_block_nb}")
-        # print(f"gb_update_file_len={gb_update_file_len}")
 
 async def send_block(block_nb: int):
     global gb_arg_debug
@@ -235,7 +213,6 @@ async def send_block(block_nb: int):
             current_block = gb_update_file_data[block_nb*256:]
     
     # print(f"Sending update block nb: {block_nb}/{int(gb_update_file_len/256)}")
-
     if gb_arg_debug:
         printProgressBar(block_nb, int(gb_update_file_len/256), suffix = f"(Sending update block nb: {block_nb}/{int(gb_update_file_len/256)})", length = 40, printEnd='\r\n')
         # you can do "tail -f current.txt" in another terminal to monitor progress without being flooded with debug messages
@@ -244,9 +221,9 @@ async def send_block(block_nb: int):
         print(''.join('0x{:02x},'.format(x) for x in current_block))
     else:
         printProgressBar(block_nb, int(gb_update_file_len/256), suffix = f"(Sending update block nb: {block_nb}/{int(gb_update_file_len/256)})", length = 40)
-    # send block:
+    # create packet to be sent:
     packet = bytearray([0xFE]) # start byte
-    current_block_crc16 = p8_crc16(current_block)
+    current_block_crc16 = p8_crc16(current_block) # block nb
     if gb_arg_debug: 
         print(f"Calculated CRC16 for the block is 0x{current_block_crc16:04x}")
     packet.extend(bytearray(current_block_crc16.to_bytes(2, byteorder = 'big'))) # 2 bytes for crc16 of the block
@@ -276,7 +253,7 @@ async def send_packet(data: bytearray):
             # This delay is essential between each write
             # If you wait for too long, it won't work, and the watch will continue to ask fot the same block
             #       --> 300ms was tested working, but 400ms doesn't work
-            # 5ms was tested functionnal on Macbook Pro 15 2019
+            # 1ms was tested functionnal on Macbook Pro 15 2019
             # 7.5ms is supposed to be the Android standard          --> total upload time: 136.4654278755188 seconds
             await asyncio.sleep(0.001)
         if (len(data) - part_nb * 20) > 0:
@@ -302,7 +279,7 @@ async def reboot(filesize: int):
     global gb_bleak_client
     print(f"reboot with parameter filesize = {filesize}")
     if not(gb_arg_simulation):
-        await sendCommand(0x63, filesize.to_bytes(4, byteorder = 'big'))
+        await send_command(0x63, filesize.to_bytes(4, byteorder = 'big'))
 
 
 # simulate notify on fee3
@@ -310,7 +287,6 @@ async def test_update_simulated():
     global gb_arg_filename
     global gb_update_file_data
     global gb_update_file_len
-    global gb_state_update_started
     global gb_update_file_crc16
     global gb_simulation_send_next
 
@@ -323,7 +299,6 @@ async def test_update_simulated():
     crc = p8_crc16(gb_update_file_data)
     print(f"Calculated CRC16 is {crc} or 0x{crc:04x} in hex")
 
-    gb_state_update_started = True
     gb_update_file_crc16 = crc
     notify = b'\xfe\xea\x10\x07\x63'
     blocks_nb = int(gb_update_file_len/256+1)
@@ -332,11 +307,6 @@ async def test_update_simulated():
         notification_handler_fee3("fee3", notify + bytes([i >> 8, i & 0xFF]))
         while(not(gb_simulation_send_next)):
             await asyncio.sleep(0)
-    # await notification_handler_fee3("fee3", b'\xfe\xea\x10\x07\x63\x00\x00')
-    # await notification_handler_fee3("fee3", b'\xfe\xea\x10\x07\x63\x00\x01')
-    # await notification_handler_fee3("fee3", b'\xfe\xea\x10\x07\x63\x00\x02')
-    # await notification_handler_fee3("fee3", b'\xfe\xea\x10\x07\x63\x00\x03')
-    # await notification_handler_fee3("fee3", b'\xfe\xea\x10\x07\x63\x00\x04')
     notification_handler_fee3("fee3", b'\xfe\xea\x10\x09\x63\xFF\xFF' + gb_update_file_crc16.to_bytes(2, byteorder = 'big'))
 
 def notification_handler(sender, data: bytes):
@@ -344,7 +314,6 @@ def notification_handler(sender, data: bytes):
 
 async def run():
     global gb_arg_filename
-    global gb_state_update_started
     global gb_state_update_finished
     global gb_update_file_crc16
     global gb_bleak_client
@@ -356,7 +325,7 @@ async def run():
     print("Searching for P8 watch...")
     # Check if the device is already connected
     services = ["FEEA"]
-    devices = await get_connected(service_uuids=services)
+    devices = await get_connected_by_services(service_uuids=services)
     for d in devices:
         if gb_arg_debug:
             print(d)
@@ -365,6 +334,7 @@ async def run():
             if gb_arg_debug:
                 print(d.__dict__)
             gb_p8_address = d.address
+    # If not already connect, scan for it
     if not gb_p8_address:
         devices = await discover()
         for d in devices:
@@ -440,7 +410,6 @@ async def run():
             print(gatt)
         if(gatt == bytearray(b'DFU=1')):
             print("DFU=1. We can continue!")
-            gb_state_update_started = True
         else:
             print("Device not in DFU_MODE. Aborting...")
             print("disconnecting...")
@@ -452,7 +421,7 @@ async def run():
         while await client.is_connected():
             await asyncio.sleep(0.5)
 
-        print("disconnecting...")
+        print("Watch got disconnected...")
         await client.disconnect()
 
 def main():
