@@ -25,13 +25,34 @@ gb_state_update_started = False
 gb_state_watch_in_DFU_MODE = False
 gb_state_update_finished = False
 gb_received_update_crc16 = 0
-gb_update_file_crc16 = 0
+gb_update_file_crc16 = None
 gb_current_block_nb = -1
 gb_update_file_data = bytearray()
 gb_update_file_len = 0
 gb_simulation_send_next = False
 gb_disable_disconnect_handler = False
 
+# Print iterations progress from https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '#', printEnd = "\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = printEnd)
+    # Print New Line on Complete
+    if iteration == total:
+        print()
 
 # This implementation is pretty slow...
 def crc16(data : bytearray, offset, length):
@@ -62,6 +83,7 @@ def p8_crc16(data: bytearray):
     return crc16_ccitt(0xFEEA, data)
 
 async def sendCommand(cmd: int, data: bytearray):
+    global gb_arg_debug
     global gb_bleak_client
     data2send = bytearray()
     data2send.append(0xFE)
@@ -70,7 +92,8 @@ async def sendCommand(cmd: int, data: bytearray):
     data2send.append(len(data)+5)
     data2send.append(cmd)
     data2send.extend(data)
-    print(''.join('0x{:02x},'.format(x) for x in data2send))
+    if gb_arg_debug:
+        print(''.join('0x{:02x},'.format(x) for x in data2send))
     await gb_bleak_client.write_gatt_char("fee2", data2send)
 
 async def read_gatt(uuid: str):
@@ -86,7 +109,8 @@ async def reconnect():
     print("Device disconnected. Waiting 5 seconds to see if it automatically reconnects...")
     await asyncio.sleep(5)
     is_connected = await gb_bleak_client.is_connected()
-    print(f"Device connected?: {is_connected}")
+    if gb_arg_debug:
+        print(f"Device connected?: {is_connected}")
     if is_connected:
         print("We're good, device reconnected automatically")
     else:
@@ -210,11 +234,16 @@ async def send_block(block_nb: int):
         else:
             current_block = gb_update_file_data[block_nb*256:]
     
-    with open("current.txt", "w") as f:
-        f.write(f"Sending update block nb: {block_nb}/{int(gb_update_file_len/256)}"+'\n')
-    print(f"Sending update block nb: {block_nb}/{int(gb_update_file_len/256)}")
+    # print(f"Sending update block nb: {block_nb}/{int(gb_update_file_len/256)}")
+
     if gb_arg_debug:
+        printProgressBar(block_nb, int(gb_update_file_len/256), suffix = f"(Sending update block nb: {block_nb}/{int(gb_update_file_len/256)})", length = 40, printEnd='\r\n')
+        # you can do "tail -f current.txt" in another terminal to monitor progress without being flooded with debug messages
+        with open("current.txt", "w") as f:
+            f.write(f"Sending update block nb: {block_nb}/{int(gb_update_file_len/256)}"+'\n')
         print(''.join('0x{:02x},'.format(x) for x in current_block))
+    else:
+        printProgressBar(block_nb, int(gb_update_file_len/256), suffix = f"(Sending update block nb: {block_nb}/{int(gb_update_file_len/256)})", length = 40)
     # send block:
     packet = bytearray([0xFE]) # start byte
     current_block_crc16 = p8_crc16(current_block)
@@ -324,22 +353,27 @@ async def run():
     global gb_update_file_len
     global gb_disable_disconnect_handler
 
+    print("Searching for P8 watch...")
     # Check if the device is already connected
     services = ["FEEA"]
     devices = await get_connected(service_uuids=services)
     for d in devices:
-        print(d)
+        if gb_arg_debug:
+            print(d)
         if(d.name == "P8 a" or d.name == "P8a"):
             print("P8 is already connected, great!!")
-            print(d.__dict__)
+            if gb_arg_debug:
+                print(d.__dict__)
             gb_p8_address = d.address
     if not gb_p8_address:
         devices = await discover()
         for d in devices:
-            print(d)
+            if gb_arg_debug:
+                print(d)
             if(d.name == "P8 a" or d.name == "P8a"):
-                print("found!!")
-                print(d.__dict__)
+                print("P8 watch was found!!")
+                if gb_arg_debug:
+                    print(d.__dict__)
                 gb_p8_address = d.address
 
         if(gb_p8_address == None):
@@ -350,20 +384,24 @@ async def run():
         gb_bleak_client = client
         # gb_bleak_client.set_disconnected_callback(disconnected_handler)
         is_connected = await client.is_connected()
-        print(f"Device connected?: {is_connected}")
+        if gb_arg_debug:
+            print(f"Device connected?: {is_connected}")
 
-        with open(gb_arg_filename, 'rb') as f:
-            gb_update_file_data = bytearray(f.read())
-            gb_update_file_len = len(gb_update_file_data)
-            print(f"{gb_arg_filename} size: {gb_update_file_len}")
-            print(''.join('0x{:02x},'.format(x) for x in gb_update_file_len.to_bytes(4, byteorder = 'big')))
-            
-        crc = p8_crc16(gb_update_file_data)
-        gb_update_file_crc16 = crc
-        print(f"Calculated CRC16 is {crc} or 0x{crc:04x} in hex")
+        if not(gb_update_file_crc16): # don't calculate again if already did before
+            with open(gb_arg_filename, 'rb') as f:
+                gb_update_file_data = bytearray(f.read())
+                gb_update_file_len = len(gb_update_file_data)
+                print(f"{gb_arg_filename} size: {gb_update_file_len}")
+                if gb_arg_debug:
+                    print(''.join('0x{:02x},'.format(x) for x in gb_update_file_len.to_bytes(4, byteorder = 'big')))
+
+            crc = p8_crc16(gb_update_file_data)
+            gb_update_file_crc16 = crc
+            print(f"Calculated CRC16 is 0x{crc:04x}")
         
         gatt = await client.read_gatt_char("2a24")
-        print(gatt)
+        if gb_arg_debug:
+            print(gatt)
         # while await client.is_connected():
         #     await asyncio.sleep(0.5)
         # return
@@ -392,12 +430,14 @@ async def run():
         gb_bleak_client = client
         # gb_bleak_client.set_disconnected_callback(disconnected_handler)
         is_connected = await client.is_connected()
-        print(f"Device connected?: {is_connected}")
+        if gb_arg_debug:
+            print(f"Device connected?: {is_connected}")
 
         await client.start_notify("fee3", callback=notification_handler_fee3)
 
         gatt = await client.read_gatt_char("2a24")
-        print(gatt)
+        if gb_arg_debug:
+            print(gatt)
         if(gatt == bytearray(b'DFU=1')):
             print("DFU=1. We can continue!")
             gb_state_update_started = True
