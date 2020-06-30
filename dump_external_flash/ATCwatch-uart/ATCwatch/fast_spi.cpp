@@ -82,6 +82,11 @@ void write_fast_spi(const uint8_t *ptr, uint32_t len) {
   while ( len );
 }
 
+// The problem with this function, that does both write and read,
+// is that the read buffer will start with 0x00 bytes for each byte written.
+// That means if you write 4 bytes and then want to read the response, 
+// the read buffer will start with 4 0x00 bytes that you don't want.
+// To avoid those bytes, do a write_fast_spi, then a read_fast_spi, which works fine.
 void write_and_read_fast_spi(const uint8_t *ptr, uint32_t len, uint8_t *ptr_read, uint32_t len_read) {
   if (len == 1) {
     enable_workaround(NRF_SPIM2, 8, 8);

@@ -1,3 +1,5 @@
+**This is not the official ATCwatch repo, this is a modified version that implements BLE UART. Go to https://github.com/atc1441/ATCwatch for the official version**
+
 # ATCwatch  -WatcH
 Custom Arduino C++ firmware for the P8 and PineTime plus many more DaFit Smartwatches
 

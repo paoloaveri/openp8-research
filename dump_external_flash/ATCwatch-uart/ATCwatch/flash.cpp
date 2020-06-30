@@ -4,6 +4,7 @@
 #include "display.h"
 #include "fast_spi.h"
 
+// SPI commands for flash chip, from https://github.com/LowPowerLab/SPIFlash/blob/master/SPIFlash.h
 #define SPIFLASH_IDREAD           0x9F        // read JEDEC manufacturer and device ID (2 bytes, specific bytes for each manufacturer and device)
 #define SPIFLASH_MACREAD          0xAB        // read unique ID number (MAC)
 #define SPIFLASH_STATUSREAD       0x05        // read status register
@@ -21,15 +22,7 @@ void init_flash() {
 void flash_readDeviceId(uint8_t *ptr_read){
 	flashStartWrite();
 	uint8_t write = SPIFLASH_IDREAD;
-	uint32_t len_read = 20;
-	write_and_read_fast_spi(&write, 1, ptr_read, len_read);
-	flashEndWrite();
-}
-
-void flash_readDeviceId2(uint8_t *ptr_read){
-	flashStartWrite();
-	uint8_t write = SPIFLASH_IDREAD;
-	uint32_t len_read = 20;
+	uint32_t len_read = 3;
 	write_fast_spi(&write, 1);
 	read_fast_spi(ptr_read, len_read);
 	flashEndWrite();
@@ -38,32 +31,22 @@ void flash_readDeviceId2(uint8_t *ptr_read){
 void flash_readUniqueId(uint8_t *ptr_read){
 	flashStartWrite();
 	uint8_t write = SPIFLASH_MACREAD;
-	uint32_t len_read = 20;
-	write_and_read_fast_spi(&write, 1, ptr_read, len_read);
+	uint32_t len_read = 8;
+	write_fast_spi(&write, 1);
+	read_fast_spi(ptr_read, len_read);
 	flashEndWrite();
 }
 
 void flash_readStatus(uint8_t *ptr_read){
 	flashStartWrite();
 	uint8_t write = SPIFLASH_STATUSREAD;
-	uint32_t len_read = 20;
-	write_and_read_fast_spi(&write, 1, ptr_read, len_read);
+	uint32_t len_read = 1;
+	write_fast_spi(&write, 1);
+	read_fast_spi(ptr_read, len_read);
 	flashEndWrite();
 }
 
-void flash_readByte(uint8_t *ptr_read, uint32_t address){
-	flashStartWrite();
-	uint8_t write[4] = {0};
-	write[0] = SPIFLASH_ARRAYREADLOWFREQ;
-	write[1] = (address >> 16) & 0xFF;
-	write[2] = (address >> 8) & 0xFF;
-	write[3] = address & 0xFF;
-	uint32_t len_read = 20;
-	write_and_read_fast_spi((const uint8_t*)&write, 4, ptr_read, len_read);
-	flashEndWrite();
-}
-
-void flash_readBytes2(uint8_t *ptr_read, uint32_t address, uint16_t len){
+void flash_readBytes(uint8_t *ptr_read, uint32_t address, uint16_t len){
 	flashStartWrite();
 	uint8_t write[4] = {0};
 	write[0] = SPIFLASH_ARRAYREADLOWFREQ;
@@ -75,7 +58,9 @@ void flash_readBytes2(uint8_t *ptr_read, uint32_t address, uint16_t len){
 	flashEndWrite();
 }
 
-void flash_readBytes(uint8_t *ptr_read, uint32_t address, uint16_t len){ // doesn't work
+// doesn't work, needs to be fixed. In theory, should be faster than flash_readBytes?
+// For now use flash_readBytes.
+void flash_readBytes_bug(uint8_t *ptr_read, uint32_t address, uint16_t len){
 	flashStartWrite();
 	uint8_t write[5] = {0};
 	write[0] = SPIFLASH_ARRAYREAD;

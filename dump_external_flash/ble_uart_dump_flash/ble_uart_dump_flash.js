@@ -1,5 +1,8 @@
-// Connect to a peripheral running the echo service
-// https://github.com/noble/bleno/blob/master/examples/echo
+// Dump the flash of P8 smartwatch
+// You need to have the ATCwatch firmware on the watch, modified to implement BLE UART,
+// and implement a flash dump function over UART. This firmware is available in this repo.
+
+// This script is based on https://github.com/noble/noble/blob/master/examples/echo.js
 
 // subscribe to be notified when the value changes
 // start an interval to write data to the characteristic
@@ -91,22 +94,27 @@ function onServicesAndCharacteristicsDiscovered(error, services, characteristics
   // data callback receives notifications
   tx_characteristic.on('data', (data, isNotification) => {
     // console.log('Received: "' + byteArray2HexString(data) + '"');
+    
+    // handles receiving blocks from the watch:
+    // We will receive 4 bytes + 256 bytes of actual data from the flash:
+    // bytes 1&2: 0x1337 (just a header, could be anything)
+    // bytes 3&4: 16 bits CRC
+    // rest of the bytes: actual data from flash
     if((data[0] == 0x13 && data[1] == 0x37) && dump_in_progress){
-      //we received a first packet of a block
+      //we received the first packet of a block
       reveiving_block = true;
       received_crc = (data[2] << 8) + data[3];
       // console.log("CRC=" + received_crc.toString(16));
       received_length += data.length - 4;
-      // current_block_content = current_block_content.concat(data.slice(4));
-      // current_block_content = data.slice(4);
+
+      // Push the rest of the packet in the content
       for(var i=4; i<data.length; i++){
         current_block_content.push(data[i]);
       }
-      // console.log('pushed: "' + byteArray2HexString(data.slice(4)) + '"');
     } else if(reveiving_block){
       received_length += data.length;
-      // current_block_content = current_block_content.concat(data);
-      // current_block_content = [].concat(current_block_content, data);
+
+      // Push the packet in the content
       for(var i=0; i<data.length; i++){
         current_block_content.push(data[i]);
       }
@@ -118,14 +126,17 @@ function onServicesAndCharacteristicsDiscovered(error, services, characteristics
         // console.log("calculated CRC=" + calculated_crc.toString(16));
         if(calculated_crc == received_crc){
           console.log("Received block_nb " + current_block_nb);
+          // write the received block to the output file:
           const buf = Buffer.from(current_block_content);
           stream.write(buf);
-          // fs.appendFileSync('ext_flash.bin', current_block_nb);
+
+          // Stop if we finished dumping the whole 4Mb:
           if(current_block_nb == 0x3FFF){
             dump_in_progress = false;
             stream.end();
             process.exit();
           } else {
+            // ask for the next block:
             received_crc = 0;
             received_length = 0;
             current_block_content = [];
@@ -153,22 +164,9 @@ function onServicesAndCharacteristicsDiscovered(error, services, characteristics
     rx_characteristic.write(message);
   }, 1000);
   var time = 11000;
-  // setTimeout(() => {
-  //   const message = new Buffer('$', 'utf-8');
-  //   console.log("Sending:  '" + message + "'");
-  //   rx_characteristic.write(message);
-  // }, time);
-  // time = time + 1000;
+  // Some additionnal commands implemented, that aren't necessary for the dump:
   // setTimeout(() => {
   //   const message = new Buffer('ID', 'utf-8');
-  //   console.log("Sending:  '" + message + "'");
-  //   rx_characteristic.write(message);
-  // }, time);
-
-
-  // time = time + 1000;
-  // setTimeout(() => {
-  //   const message = new Buffer('ID2', 'utf-8');
   //   console.log("Sending:  '" + message + "'");
   //   rx_characteristic.write(message);
   // }, time);
@@ -186,41 +184,17 @@ function onServicesAndCharacteristicsDiscovered(error, services, characteristics
   // }, time);
   // time = time + 1000;
   // setTimeout(() => {
-  //   const message = new Buffer('BYTE', 'utf-8');
+  //   const message = new Buffer('BYTESTEST', 'utf-8');
   //   console.log("Sending:  '" + message + "'");
   //   rx_characteristic.write(message);
   // }, time);
   // time = time + 1000;
-  // setTimeout(() => {
-  //   const message = new Buffer('BYTES', 'utf-8');
-  //   console.log("Sending:  '" + message + "'");
-  //   rx_characteristic.write(message);
-  // }, time);
-  // time = time + 1000;
-  // setTimeout(() => {
-  //   const message = new Buffer('BYTE2', 'utf-8');
-  //   console.log("Sending:  '" + message + "'");
-  //   rx_characteristic.write(message);
-  // }, time);
-  time = time + 1000;
   setTimeout(() => {
     request_block_nb(current_block_nb);
-  }, time);
-  // time = time + 3000;
-  // setTimeout(() => {
-  //   const message = new Buffer('BLOCK\x12\x34', 'utf-8');
-  //   console.log("Sending:  '" + message + "'");
-  //   rx_characteristic.write(message);
-  // }, time);
-  // time = time + 1000;
-  // setTimeout(() => {
-  //   const message = new Buffer('TEST', 'utf-8');
-  //   console.log("Sending:  '" + message + "'");
-  //   rx_characteristic.write(message);
-  // }, time);
-  
+  }, time); 
 }
 
+// Useful for printing bytearrays
 function byteArray2HexString(data, padding) {
     var ba = data;
     var str_out = "";
@@ -253,6 +227,7 @@ function number2HexString(number, diggits) {
     return byteArray2HexString(ba);
 }
 
+// using the same CRC as the original P8 firmware (MOY-TFK5-1.7.7), but we could use anything
 function crc16_ccitt(crc, data){
   var msb = crc >> 8;
   var lsb = crc & 255;
