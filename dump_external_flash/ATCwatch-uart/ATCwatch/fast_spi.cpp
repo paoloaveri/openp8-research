@@ -81,3 +81,67 @@ void write_fast_spi(const uint8_t *ptr, uint32_t len) {
   }
   while ( len );
 }
+
+void write_and_read_fast_spi(const uint8_t *ptr, uint32_t len, uint8_t *ptr_read, uint32_t len_read) {
+  if (len == 1) {
+    enable_workaround(NRF_SPIM2, 8, 8);
+  } else {
+    disable_workaround(NRF_SPIM2, 8, 8);
+  }
+
+  int v2 = 0;
+  do
+  {
+    NRF_SPIM2->EVENTS_END = 0;
+    NRF_SPIM2->EVENTS_ENDRX = 0;
+    NRF_SPIM2->EVENTS_ENDTX = 0;
+    NRF_SPIM2->TXD.PTR = (uint32_t) ptr + v2;
+    if ( len <= 0xFF )
+    {
+      NRF_SPIM2->TXD.MAXCNT = len;
+      v2 += len;
+      len = 0;
+    }
+    else
+    {
+      NRF_SPIM2->TXD.MAXCNT = 255;
+      v2 += 255;
+      len -= 255;
+    }
+    NRF_SPIM2->RXD.PTR = (uint32_t) ptr_read;
+    NRF_SPIM2->RXD.MAXCNT = len_read;
+    NRF_SPIM2->TASKS_START = 1;
+    while (NRF_SPIM2->EVENTS_END == 0);
+    NRF_SPIM2->EVENTS_END = 0;
+  }
+  while ( len );
+}
+
+void read_fast_spi(uint8_t *ptr_read, uint32_t len) {
+  int v2 = 0;
+  do
+  {
+    NRF_SPIM2->EVENTS_END = 0;
+    NRF_SPIM2->EVENTS_ENDRX = 0;
+    NRF_SPIM2->EVENTS_ENDTX = 0;
+    NRF_SPIM2->TXD.PTR = 0;
+    NRF_SPIM2->TXD.MAXCNT = 0;
+    NRF_SPIM2->RXD.PTR = (uint32_t) ptr_read + v2;
+    if ( len <= 0xFF )
+    {
+      NRF_SPIM2->RXD.MAXCNT = len;
+      v2 += len;
+      len = 0;
+    }
+    else
+    {
+      NRF_SPIM2->RXD.MAXCNT = 255;
+      v2 += 255;
+      len -= 255;
+    }
+    NRF_SPIM2->TASKS_START = 1;
+    while (NRF_SPIM2->EVENTS_END == 0);
+    NRF_SPIM2->EVENTS_END = 0;
+  }
+  while ( len );
+}

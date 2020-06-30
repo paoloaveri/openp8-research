@@ -1,0 +1,11 @@
+{
+  "name": "ble_uart_dump_flash",
+  "version": "1.0.0",
+  "description": "",
+  "main": "ble_uart_dump_flash.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Paolo Averi",
+  "license": "ISC"
+}

@@ -14,13 +14,17 @@
 #include "bootloader.h"
 #include "time.h"
 #include "push.h"
+#include "flash.h"
 
 #define buffer_lcd_size LV_HOR_RES_MAX * 30
 static lv_disp_buf_t disp_buf;
 static lv_color_t buf[buffer_lcd_size];
 
+extern int flash_is_on;
+
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
 {
+  if(flash_is_on == 0){
   uint32_t w = (area->x2 - area->x1 + 1);
   uint32_t h = (area->y2 - area->y1 + 1);
   startWrite();
@@ -28,10 +32,12 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
   write_fast_spi(reinterpret_cast<const uint8_t *>(color_p), (w * h * 2));
   endWrite();
   lv_disp_flush_ready(disp);
+  }
 }
 
 bool my_touchpad_read(lv_indev_drv_t * indev_driver, lv_indev_data_t * data)
 {
+  if(flash_is_on == 0){
   bool touched = false;
   get_read_touch();
   touch_data_struct touch_data = get_touch();
@@ -45,6 +51,7 @@ bool my_touchpad_read(lv_indev_drv_t * indev_driver, lv_indev_data_t * data)
   data->state = touched;
   data->point.x = touch_data.xpos;
   data->point.y = touch_data.ypos;
+  }
   return false;
 }
 
@@ -53,6 +60,7 @@ void inc_tick() {
 }
 
 void init_display() {
+  if(flash_is_on == 0){
   initDisplay();
   lv_init();
   lv_disp_buf_init(&disp_buf, buf, NULL, buffer_lcd_size);
@@ -75,8 +83,10 @@ void init_display() {
   lv_theme_t *th = lv_theme_night_init(10, NULL);
   lv_theme_set_current(th);
 }
+}
 
 void display_enable(bool state) {
+  if(flash_is_on == 0){
   uint8_t temp[2];
   startWrite();
   if (state) {
@@ -88,9 +98,11 @@ void display_enable(bool state) {
   }
   endWrite();
 }
+}
 
 void setAddrWindowDisplay(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
+  if(flash_is_on == 0){
   uint8_t temp[4];
   spiCommand(0x2A);
   temp[0] = 0x00;
@@ -106,8 +118,10 @@ void setAddrWindowDisplay(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
   write_fast_spi(temp, 4);
   spiCommand(0x2C);
 }
+}
 
 void initDisplay() {
+  if(flash_is_on == 0){
   uint8_t temp[25];
   pinMode(LCD_CS, OUTPUT);
   pinMode(LCD_RS, OUTPUT);
@@ -208,23 +222,32 @@ void initDisplay() {
   spiCommand(0x29);
   endWrite();
 }
+}
 
 void spiCommand(uint8_t d) {
+  if(flash_is_on == 0){
   digitalWrite(LCD_RS , LOW);
   write_fast_spi(&d, 1);
   digitalWrite(LCD_RS , HIGH);
 }
+}
 
 void spiWrite(uint8_t d) {
+  if(flash_is_on == 0){
   write_fast_spi(&d, 1);
+}
 }
 
 void startWrite(void) {
+  if(flash_is_on == 0){
   enable_spi(true);
   digitalWrite(LCD_CS , LOW);
 }
+}
 
 void endWrite(void) {
+  if(flash_is_on == 0){
   digitalWrite(LCD_CS , HIGH);
   enable_spi(false);
+}
 }
