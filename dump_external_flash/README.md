@@ -11,11 +11,11 @@ I flashed this firmware using an stlink-v2 (reflashed with the CMSIS-DAP firmwar
 
 ### Nodejs noble script:
 
-This script connects to the watch with ATCwatch-uart firmware and dumps the external flash to a file. It was tested functionnal on a Raspberry Pi 3 with nodejs v9.11.2 (tests on Mac were noe successful, even using noble-mac). 
+This script connects to the watch with ATCwatch-uart firmware and dumps the external flash to a file. It was tested functionnal on a Raspberry Pi 3 with nodejs v9.11.2 (tests on Mac were not successful, even using noble-mac). 
 
 The whole dump takes 17 minutes.
 
-I added a 11 seconds delay after connecting, just to ensure the screen turns off, so that we don't have both the screen and the flash talking over SPI. Not sure if this is necessary.
+I added an 11 seconds delay after connecting, just to ensure the screen turns off, so that we don't have both the screen and the flash talking over SPI. Not sure if this is necessary.
 
 How to run the script:
 ```
